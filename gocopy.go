@@ -3,10 +3,21 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 )
+
+const File = 1
+const Dir = 2
+const Err = 9
+
+type CopyFileList struct {
+	fileType int
+	srcFile string
+	dstFile string
+}
 
 func isExist(path string) bool {
 	_, err := os.Stat(path)
@@ -25,37 +36,70 @@ func isDirectory(path string) bool {
 	return false
 }
 
-func getFileList(path string) {
-	if !isDirectory(path) {
-		fmt.Println(path, "is File.")
-		os.Exit(1)
-	}
-
-	fileList, err := ioutil.ReadDir(path)
-	if err != nil {
-		fmt.Println("Error: ", err)
-		os.Exit(1)
-	}
-	for i := range fileList {
-		fullpath := filepath.Join(path, fileList[i].Name())
-		if fileList[i].IsDir() {
-			getFileList(fullpath)
-		}
-		fmt.Println(fullpath)
-	}
+func logCopyFile(i int, list []CopyFileList) {
+	fmt.Printf("%3d %s\n", i, list[i].srcFile)
+	fmt.Printf("%d   %s\n", list[i].fileType, list[i].dstFile)
 }
 
-func copyFile() {
+func getFileList(srcPath, dstPath string, list []CopyFileList) []CopyFileList {
+	if !isDirectory(srcPath) {
+		fmt.Println(srcPath, "is File.")
+		// エラーはskip(Access is denied. になる場合がある)
+		list[len(list)-1].fileType = Err
+		logCopyFile(len(list)-1, list)
+		//os.Exit(1)
+		return list
+	}
+
+	fileList, err := ioutil.ReadDir(srcPath)
+	if err != nil {
+		fmt.Println("Error: ", err)
+		// エラーはskip(Access is denied. になる場合がある)
+		list[len(list)-1].fileType = Err
+		logCopyFile(len(list)-1, list)
+		//os.Exit(1)
+		return list
+	}
+	for i := range fileList {
+		fullSrcPath := filepath.Join(srcPath, fileList[i].Name())
+		fullDstPath := filepath.Join(dstPath, fileList[i].Name())
+		if fileList[i].IsDir() {
+			list = append(list, CopyFileList{Dir, fullSrcPath, fullDstPath})
+			list = getFileList(fullSrcPath, fullDstPath, list)
+		} else {
+			list = append(list, CopyFileList{File, fullSrcPath, fullDstPath})
+		}
+	}
+	return list
+}
+
+func copyFile(srcFile, dstFile string) {
 	/*
-		content, err := ioutil.ReadFile(flag.Arg(0))
+		content, err := ioutil.ReadFile(srcFile)
 		if err != nil {
 			panic(err)
 		}
-		err = ioutil.WriteFile(flag.Arg(1), content, 644)
+		err = ioutil.WriteFile(dstFile, content, 644)
 		if err != nil {
 			panic(err)
 		}
 	*/
+	src, err := os.Open(srcFile)
+	if err != nil {
+		panic(err)
+	}
+	defer src.Close()
+
+	dst, err := os.Create(dstFile)
+	if err != nil {
+		panic(err)
+	}
+	defer dst.Close()
+
+	_, err = io.Copy(dst, src)
+	if err != nil {
+		panic(err)
+	}
 }
 
 func main() {
@@ -74,16 +118,19 @@ func main() {
 	if !isDirectory(srcPath) {
 		// source is File
 		if isExist(dstPath) {
-			// destnation is exist
+			// destination is exist
 			if isDirectory(dstPath) {
 				// copy destination directory
 				fmt.Println("dst is directory.")
+				_, file := filepath.Split(srcPath)
+				fmt.Println("copy ", srcPath, " to ", filepath.Join(dstPath, file))
+				copyFile(srcPath, filepath.Join(dstPath, file))
 			} else {
 				// overwrite destination file
 				fmt.Println("dst is file.")
 			}
 		} else {
-			// destnation is not exist
+			// destination is not exist
 			dir, file := filepath.Split(dstPath)
 			fmt.Println(dir)
 			fmt.Println(file)
@@ -97,7 +144,30 @@ func main() {
 			}
 		}
 	} else {
+		list := []CopyFileList{}
 		// source is Directory
-		getFileList(srcPath)
+		if isExist(dstPath) {
+			// destination is exist
+			if isDirectory(dstPath) {
+				// copy destination directory
+				fmt.Println("dst is directory.")
+				list = getFileList(srcPath, dstPath, list)
+			} else {
+				// overwrite destination file
+				fmt.Println("dst is file.")
+				os.Exit(1)
+			}
+		} else {
+			// destnation is not exist
+			list = getFileList(srcPath, dstPath, list)
+		}
+		for i := range list {
+			//logCopyFile(i, list)
+			if (list[i].fileType == Dir) {
+				os.MkdirAll(list[i].dstFile, 0777)
+			} else if (list[i].fileType == File) {
+				copyFile(list[i].srcFile, list[i].dstFile)
+			}
+		}
 	}
 }
