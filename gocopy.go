@@ -7,16 +7,20 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"sync"
+	"runtime"
 )
 
 const File = 1
 const Dir = 2
 const Err = 9
 
+var wg sync.WaitGroup
+
 type CopyFileList struct {
 	fileType int
-	srcFile string
-	dstFile string
+	srcFile  string
+	dstFile  string
 }
 
 func isExist(path string) bool {
@@ -74,6 +78,7 @@ func getFileList(srcPath, dstPath string, list []CopyFileList) []CopyFileList {
 }
 
 func copyFile(srcFile, dstFile string) {
+	defer wg.Done()
 	/*
 		content, err := ioutil.ReadFile(srcFile)
 		if err != nil {
@@ -161,13 +166,21 @@ func main() {
 			// destnation is not exist
 			list = getFileList(srcPath, dstPath, list)
 		}
-		for i := range list {
+
+		cpus := runtime.NumCPU()
+		runtime.GOMAXPROCS(cpus)
+		fmt.Println("cpus:", cpus)
+		for _, target := range list {
 			//logCopyFile(i, list)
-			if (list[i].fileType == Dir) {
-				os.MkdirAll(list[i].dstFile, 0777)
-			} else if (list[i].fileType == File) {
-				copyFile(list[i].srcFile, list[i].dstFile)
+			//fmt.Printf("%d ", i)
+			if target.fileType == Dir {
+				os.MkdirAll(target.dstFile, 0777)
+			} else if target.fileType == File {
+				wg.Add(1)
+				go copyFile(target.srcFile, target.dstFile)
 			}
 		}
+		//fmt.Println("")
+		wg.Wait()
 	}
 }
