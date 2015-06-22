@@ -15,8 +15,6 @@ const File = 1
 const Dir = 2
 const Err = 9
 
-var wg sync.WaitGroup
-
 type CopyFileList struct {
 	fileType int
 	srcFile  string
@@ -78,7 +76,6 @@ func getFileList(srcPath, dstPath string, list []CopyFileList) []CopyFileList {
 }
 
 func copyFile(srcFile, dstFile string) {
-	defer wg.Done()
 	/*
 		content, err := ioutil.ReadFile(srcFile)
 		if err != nil {
@@ -114,6 +111,8 @@ func main() {
 	dstPath := flag.Arg(1)
 	fmt.Println("arg1: ", srcPath)
 	fmt.Println("arg2: ", dstPath)
+
+	var wg sync.WaitGroup
 
 	if !isExist(srcPath) {
 		fmt.Println("Source file or directory not found.")
@@ -177,10 +176,12 @@ func main() {
 				os.MkdirAll(target.dstFile, 0777)
 			} else if target.fileType == File {
 				wg.Add(1)
-				go copyFile(target.srcFile, target.dstFile)
+				go func(copyTarget CopyFileList) {
+					defer wg.Done()
+					copyFile(copyTarget.srcFile, target.dstFile)
+				}(target)
+				wg.Wait()
 			}
 		}
-		//fmt.Println("")
-		wg.Wait()
 	}
 }
