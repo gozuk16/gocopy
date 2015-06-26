@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"log"
 	"io"
 	"io/ioutil"
 	"os"
@@ -39,8 +40,8 @@ func isDirectory(path string) bool {
 }
 
 func logCopyFile(i int, list []CopyFileList) {
-	fmt.Printf("%3d %s\n", i, list[i].srcFile)
-	fmt.Printf("%d   %s\n", list[i].fileType, list[i].dstFile)
+	log.Printf("%3d %s\n", i, list[i].srcFile)
+	log.Printf("%d   %s\n", list[i].fileType, list[i].dstFile)
 }
 
 func getFileList(srcPath, dstPath string, list []CopyFileList) []CopyFileList {
@@ -109,8 +110,8 @@ func main() {
 
 	srcPath := flag.Arg(0)
 	dstPath := flag.Arg(1)
-	fmt.Println("arg1: ", srcPath)
-	fmt.Println("arg2: ", dstPath)
+	log.Println("arg1: ", srcPath)
+	log.Println("arg2: ", dstPath)
 
 	var wg sync.WaitGroup
 
@@ -154,8 +155,9 @@ func main() {
 			// destination is exist
 			if isDirectory(dstPath) {
 				// copy destination directory
-				fmt.Println("dst is directory.")
+				log.Println("dst is directory.")
 				list = getFileList(srcPath, dstPath, list)
+				log.Println("finish getFileList: size =", len(list))
 			} else {
 				// overwrite destination file
 				fmt.Println("dst is file.")
@@ -168,7 +170,7 @@ func main() {
 
 		cpus := runtime.NumCPU()
 		runtime.GOMAXPROCS(cpus)
-		fmt.Println("cpus:", cpus)
+		log.Println("cpus:", cpus)
 		for _, target := range list {
 			//logCopyFile(i, list)
 			//fmt.Printf("%d ", i)
@@ -184,4 +186,5 @@ func main() {
 			}
 		}
 	}
+	log.Println("finished")
 }
