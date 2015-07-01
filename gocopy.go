@@ -63,30 +63,33 @@ func getFileList(srcPath, dstPath string, list []CopyFileList) []CopyFileList {
 		//os.Exit(1)
 		return list
 	}
-	for i := range fileList {
-		fullSrcPath := filepath.Join(srcPath, fileList[i].Name())
-		fullDstPath := filepath.Join(dstPath, fileList[i].Name())
-		if fileList[i].IsDir() {
-			list = append(list, CopyFileList{Dir, fullSrcPath, fullDstPath})
+
+	var wg sync.WaitGroup
+	cpus := runtime.NumCPU()
+	runtime.GOMAXPROCS(cpus)
+	for _, target := range fileList {
+		fullSrcPath := filepath.Join(srcPath, target.Name())
+		fullDstPath := filepath.Join(dstPath, target.Name())
+		if target.IsDir() {
+			os.MkdirAll(fullDstPath, 0777)
+			//list = append(list, CopyFileList{Dir, fullSrcPath, fullDstPath})
 			list = getFileList(fullSrcPath, fullDstPath, list)
 		} else {
-			list = append(list, CopyFileList{File, fullSrcPath, fullDstPath})
+			content := readFile(fullSrcPath)
+			wg.Add(1)
+			go func(dst string, b []byte) {
+				defer wg.Done()
+				writeFile(b, dst)
+			}(fullDstPath, content)
+			wg.Wait()
+			//copyFile(fullSrcPath, fullDstPath)
+			//list = append(list, CopyFileList{File, fullSrcPath, fullDstPath})
 		}
 	}
 	return list
 }
 
 func copyFile(srcFile, dstFile string) {
-	/*
-		content, err := ioutil.ReadFile(srcFile)
-		if err != nil {
-			panic(err)
-		}
-		err = ioutil.WriteFile(dstFile, content, 644)
-		if err != nil {
-			panic(err)
-		}
-	*/
 	src, err := os.Open(srcFile)
 	if err != nil {
 		panic(err)
@@ -105,6 +108,21 @@ func copyFile(srcFile, dstFile string) {
 	}
 }
 
+func readFile(src string) []byte {
+	content, err := ioutil.ReadFile(src)
+	if err != nil {
+		panic(err)
+	}
+	return content
+}
+
+func writeFile(content []byte, dst string) {
+	err := ioutil.WriteFile(dst, content, 644)
+	if err != nil {
+		panic(err)
+	}
+}
+
 func main() {
 	flag.Parse()
 
@@ -113,7 +131,7 @@ func main() {
 	log.Println("arg1: ", srcPath)
 	log.Println("arg2: ", dstPath)
 
-	var wg sync.WaitGroup
+	//var wg sync.WaitGroup
 
 	if !isExist(srcPath) {
 		fmt.Println("Source file or directory not found.")
@@ -157,7 +175,7 @@ func main() {
 				// copy destination directory
 				log.Println("dst is directory.")
 				list = getFileList(srcPath, dstPath, list)
-				log.Println("finish getFileList: size =", len(list))
+				//log.Println("finish getFileList: size =", len(list))
 			} else {
 				// overwrite destination file
 				fmt.Println("dst is file.")
@@ -166,24 +184,6 @@ func main() {
 		} else {
 			// destnation is not exist
 			list = getFileList(srcPath, dstPath, list)
-		}
-
-		cpus := runtime.NumCPU()
-		runtime.GOMAXPROCS(cpus)
-		log.Println("cpus:", cpus)
-		for _, target := range list {
-			//logCopyFile(i, list)
-			//fmt.Printf("%d ", i)
-			if target.fileType == Dir {
-				os.MkdirAll(target.dstFile, 0777)
-			} else if target.fileType == File {
-				wg.Add(1)
-				go func(copyTarget CopyFileList) {
-					defer wg.Done()
-					copyFile(copyTarget.srcFile, target.dstFile)
-				}(target)
-				wg.Wait()
-			}
 		}
 	}
 	log.Println("finished")
